@@ -106,6 +106,7 @@ class GeminiModelManager:
 class GeminiFIAnalyzer:
     def __init__(self, api_key: str):
         self.model_manager = GeminiModelManager(api_key)
+    
     def analyze_with_gemini(self, fir_text: str) -> Dict[str, any]:
         if not self.model_manager.configured:
             return self._fallback_response("Gemini API not configured")
@@ -118,61 +119,127 @@ class GeminiFIAnalyzer:
         try:
             model = genai.GenerativeModel(model_name)
             prompt = f"""
-            You are an AI legal expert specialized in Indian law. Analyze the following FIR text and extract structured information according to the specified JSON format.
+You are an AI legal expert specialized in Indian criminal law. Analyze the following FIR text and extract structured information. 
+Map the offences to the CORRECT legal sections from Bharatiya Nyaya Sanhita (BNS) 2023, which replaced the IPC.
 
-            FIR TEXT:
-            {fir_text}
+CRITICAL INSTRUCTION: Use ONLY BNS 2023 sections with their CORRECT definitions. DO NOT confuse IPC sections with BNS sections.
 
-            EXTRACTION REQUIREMENTS:
-            1. Extract: Complainant details, Date/Time, Place, Accused, Vehicles, WeaponsUsed, Offences, Injuries, PropertyLoss, Threats, Witnesses, Impact.
-            2. Map offences to BNS 2023, SC/ST Act, Arms Act, MVA (if applicable).
-            3. Give legal analysis summary.
+KEY BNS 2023 SECTIONS (Use these as reference):
+- Section 103: Murder (not 309)
+- Section 115(2): Voluntarily causing hurt
+- Section 117: Voluntarily causing grievous hurt
+- Section 309(2): Robbery (taking property with threat/force)
+- Section 310: Dacoity
+- Section 351(2): Criminal intimidation (threats to cause harm)
+- Section 351(3): Criminal intimidation with threat to cause death
+- Section 352: Intentional insult with intent to provoke breach of peace
+- Section 356(2): Theft
+- Section 303(2): Kidnapping
 
-            OUTPUT FORMAT (JSON ONLY):
-            {{
-                "extracted_info": {{
-                    "Complainant": {{
-                        "Name": "string","Father": "string","Age": number,"Community": "string","Occupation": "string","Address": "string"
-                    }},
-                    "DateTime": "string",
-                    "Place": "string",
-                    "Accused": [{{"Name": "string","Age": number,"Relation": "string","Occupation": "string","Address": "string","History": "string"}}],
-                    "Vehicles": ["string"],
-                    "WeaponsUsed": ["string"],
-                    "Offences": ["string"],
-                    "Injuries": "string",
-                    "PropertyLoss": ["string"],
-                    "Threats": ["string"],
-                    "Witnesses": ["string"],
-                    "Impact": "string"
-                }},
-                "legal_mapping": {{
-                    "BNS 2023": ["string"],
-                    "SC/ST Atrocities Act, 1989": ["string"],
-                    "Arms Act, 1959": ["string"],
-                    "Motor Vehicles Act, 1988": ["string"]
-                }},
-                "legal_analysis": "string"
-            }}
-            """
+SC/ST (PREVENTION OF ATROCITIES) ACT, 1989:
+- Section 3(1)(r): Intentionally insults or intimidates with intent to humiliate a member of SC/ST in any place within public view
+- Section 3(1)(s): Abuses any member of SC/ST by caste name in any place within public view
+- Section 3(2)(v): Commits any offence under the Act on the ground that such person is a member of SC/ST
+
+ARMS ACT, 1959:
+- Section 25: Possession/use of prohibited arms and ammunition
+- Section 27: Use of arms in commission of an offence
+
+MOTOR VEHICLES ACT, 1988:
+- Section 66: Use of vehicle without registration or in violation of rules
+
+FIR TEXT:
+{fir_text}
+
+EXTRACTION REQUIREMENTS:
+1. Extract all relevant details: Complainant, Accused, Date/Time, Place, Vehicles, Weapons, Offences, Injuries, etc.
+2. For legal mapping, identify the criminal acts committed and map them to:
+   - BNS 2023 sections (with correct section numbers and descriptions)
+   - SC/ST Atrocities Act (if caste-based abuse/discrimination is present)
+   - Arms Act (if firearms/weapons are used)
+   - Motor Vehicles Act (if vehicles were used unlawfully)
+3. Provide detailed legal analysis explaining why each section applies.
+
+IMPORTANT: 
+- BNS Section 309 is for ROBBERY (not murder)
+- BNS Section 103 is for MURDER
+- Double-check section numbers against the definitions provided above
+- If you're unsure about a section, provide your best legal reasoning
+
+OUTPUT FORMAT (JSON ONLY, NO MARKDOWN):
+{{
+    "extracted_info": {{
+        "Complainant": {{
+            "Name": "string",
+            "Father": "string",
+            "Age": number,
+            "Community": "string",
+            "Occupation": "string",
+            "Address": "string"
+        }},
+        "DateTime": "string",
+        "Place": "string",
+        "Accused": [{{
+            "Name": "string",
+            "Age": number,
+            "Relation": "string",
+            "Occupation": "string",
+            "Address": "string",
+            "History": "string"
+        }}],
+        "Vehicles": ["string"],
+        "WeaponsUsed": ["string"],
+        "Offences": ["string"],
+        "Injuries": "string",
+        "PropertyLoss": ["string"],
+        "Threats": ["string"],
+        "Witnesses": ["string"],
+        "Impact": "string"
+    }},
+    "legal_mapping": {{
+        "BNS 2023": [
+            "Section XXX - Description: Explanation of why this section applies"
+        ],
+        "SC/ST Atrocities Act, 1989": [
+            "Section X(X)(x) - Description: Explanation"
+        ],
+        "Arms Act, 1959": [
+            "Section XX - Description: Explanation"
+        ],
+        "Motor Vehicles Act, 1988": [
+            "Section XX - Description: Explanation"
+        ]
+    }},
+    "legal_analysis": "Comprehensive analysis explaining: 1) What criminal acts occurred, 2) Which specific BNS 2023 sections apply and why (with correct section numbers), 3) Applicability of special acts (SC/ST, Arms, MVA), 4) Severity assessment, 5) Recommended charges"
+}}
+
+Respond with ONLY the JSON object, no markdown formatting or code blocks.
+"""
             response = model.generate_content(prompt)
             response_text = response.text.strip()
-            response_text = response_text.replace('``````', '').strip()
+            
+            # Clean up response text
+            response_text = response_text.replace('```json', '').replace('```', '').strip()
+            
+            # Extract JSON
             start_idx = response_text.find('{')
             end_idx = response_text.rfind('}') + 1
             if start_idx != -1 and end_idx != 0:
                 json_text = response_text[start_idx:end_idx]
             else:
                 json_text = response_text
+            
             try:
                 result = json.loads(json_text)
                 result['timestamp'] = datetime.now().isoformat()
                 result['model_used'] = model_name
                 return result
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as e:
+                # Try to fix common JSON issues
                 return self.extract_from_text_response(response_text, fir_text, model_name)
         except Exception as e:
             return self._fallback_response(f"Gemini API error: {str(e)}")
+    
     def extract_from_text_response(self, response_text: str, original_fir: str, model_name: str) -> Dict[str, any]:
         extracted_info = {
             "Complainant": {},
@@ -188,15 +255,42 @@ class GeminiFIAnalyzer:
             "Witnesses": [],
             "Impact": ""
         }
-        legal_mapping = {}
-        legal_analysis = f"Analysis completed with fallback method using model {model_name}."
+        legal_mapping = {
+            "BNS 2023": [],
+            "SC/ST Atrocities Act, 1989": [],
+            "Arms Act, 1959": [],
+            "Motor Vehicles Act, 1988": []
+        }
+        legal_analysis = f"Analysis completed with fallback method using model {model_name}. Please review the extracted information manually."
+        
         import re
+        # Extract vehicle numbers
         vehicles = re.findall(r'[A-Z]{2}-\d{2}-[A-Z]{1,2}-\d{4}', original_fir)
         extracted_info["Vehicles"] = vehicles
-        weapons_keywords = ['knife', 'pistol', 'gun', 'rod', 'stick', 'weapon']
+        
+        # Extract weapons
+        weapons_keywords = ['knife', 'pistol', 'gun', 'rod', 'stick', 'weapon', 'firearm']
         for weapon in weapons_keywords:
             if weapon in original_fir.lower():
                 extracted_info["WeaponsUsed"].append(weapon)
+        
+        # Basic legal mapping based on keywords
+        if any(word in original_fir.lower() for word in ['robbery', 'snatched', 'forcibly took']):
+            legal_mapping["BNS 2023"].append("Section 309(2) - Robbery: Forcible taking of property")
+        
+        if any(word in original_fir.lower() for word in ['threatened', 'threat', 'intimidat']):
+            legal_mapping["BNS 2023"].append("Section 351(2) - Criminal intimidation")
+        
+        if any(word in original_fir.lower() for word in ['injury', 'hurt', 'injured', 'bleeding']):
+            legal_mapping["BNS 2023"].append("Section 115(2) - Voluntarily causing hurt")
+        
+        if any(word in original_fir.lower() for word in ['caste', 'scheduled caste', 'sc/st']):
+            legal_mapping["SC/ST Atrocities Act, 1989"].append("Section 3(1)(r) - Intentional insult/abuse")
+        
+        if 'pistol' in original_fir.lower() or 'gun' in original_fir.lower() or 'firearm' in original_fir.lower():
+            legal_mapping["Arms Act, 1959"].append("Section 25 - Possession/use of prohibited arms")
+            legal_mapping["Arms Act, 1959"].append("Section 27 - Use of arms in commission of offence")
+        
         return {
             "extracted_info": extracted_info,
             "legal_mapping": legal_mapping,
@@ -204,6 +298,7 @@ class GeminiFIAnalyzer:
             "timestamp": datetime.now().isoformat(),
             "model_used": model_name
         }
+    
     def _fallback_response(self, error_msg: str) -> Dict[str, any]:
         return {
             "extracted_info": {
@@ -220,7 +315,12 @@ class GeminiFIAnalyzer:
                 "Witnesses": [],
                 "Impact": f"Analysis failed - {error_msg}"
             },
-            "legal_mapping": {},
+            "legal_mapping": {
+                "BNS 2023": [],
+                "SC/ST Atrocities Act, 1989": [],
+                "Arms Act, 1959": [],
+                "Motor Vehicles Act, 1988": []
+            },
             "legal_analysis": f"Analysis could not be completed. Error: {error_msg}",
             "timestamp": datetime.now().isoformat(),
             "model_used": "none"
@@ -277,13 +377,14 @@ class DharmaFIRAnalyzer:
                 st.write("No accused information extracted")
     def _display_legal_mapping(self, legal_mapping: Dict[str, List[str]]):
         st.markdown('<div class="section-header">⚖️ Legal Sections Applied</div>', unsafe_allow_html=True)
-        if not legal_mapping:
+        if not legal_mapping or all(not sections for sections in legal_mapping.values()):
             st.warning("No legal sections could be mapped.")
             return
         for act, sections in legal_mapping.items():
-            st.subheader(f"{act}")
-            for section in sections:
-                st.markdown(f'<div class="legal-section">{section}</div>', unsafe_allow_html=True)
+            if sections:
+                st.subheader(f"{act}")
+                for section in sections:
+                    st.markdown(f'<div class="legal-section">{section}</div>', unsafe_allow_html=True)
     def _display_detailed_analysis(self, results: Dict[str, any]):
         extracted_info = results.get('extracted_info', {})
         col1, col2 = st.columns(2)
@@ -339,7 +440,7 @@ class DharmaFIRAnalyzer:
         total_accused = len(extracted_info.get('Accused', []))
         total_offences = len(extracted_info.get('Offences', []))
         total_legal_sections = sum(len(sections) for sections in legal_mapping.values())
-        total_acts = len(legal_mapping)
+        total_acts = sum(1 for sections in legal_mapping.values() if sections)
         col1, col2, col3, col4 = st.columns(4)
         with col1:
             st.metric("👤 Accused Persons", total_accused)
@@ -349,7 +450,8 @@ class DharmaFIRAnalyzer:
             st.metric("📚 Legal Sections", total_legal_sections)
         with col4:
             st.metric("📜 Acts Violated", total_acts)
-        st.markdown(results.get('legal_analysis', ''))
+        st.markdown("### 📝 Legal Analysis")
+        st.markdown(results.get('legal_analysis', 'No analysis available'))
         json_str = json.dumps(results, indent=2, ensure_ascii=False)
         st.download_button(
             label="📥 Download Analysis Results (JSON)",
@@ -364,7 +466,7 @@ def main():
     st.markdown("""
     <div class="info-box">
     <strong>AI-powered analysis using Google Gemini AI</strong><br>
-    Extract structured information and map to relevant legal sections from mixed English-Telugu FIR texts.
+    Extract structured information and map to relevant legal sections (BNS 2023) from mixed English-Telugu FIR texts.
     </div>
     """, unsafe_allow_html=True)
 
@@ -378,7 +480,7 @@ def main():
 
 When I tried to shout for help, Raju threatened, "Reporting to police will get you and your family in trouble." Local tea stall owner Ramulu and auto driver Venkatesh witnessed the incident but were afraid to intervene.
 
-During the scuffle, my arm was injured. The accused escaped on a white Activa (TS-10-AB-3210). I suffered mental trauma and fear for my family’s safety.
+During the scuffle, my arm was injured. The accused escaped on a white Activa (TS-10-AB-3210). I suffered mental trauma and fear for my family's safety.
 
 ఈ దాడి వల్ల నాకు గాయాలు అయ్యాయి మరియు నాకు మానసిక భయంతో పాటు ఆస్తి నష్టం కూడా జరిగింది. నేను వెంటనే పోలీసుగా ఫిర్యాదు చేస్తున్నాను."""
     st.markdown('<div class="section-header">📝 FIR Text Input</div>', unsafe_allow_html=True)
@@ -413,13 +515,20 @@ During the scuffle, my arm was injured. The accused escaped on a white Activa (T
         st.info("""
         This AI system uses Google Gemini AI to:
         - Extract structured information from FIRs
-        - Map offences to legal sections
+        - Map offences to legal sections (BNS 2023)
         - Handle multilingual text (English + Telugu)
         - Generate comprehensive legal analysis
         """)
-        st.markdown("### 📊 Supported Legal Frameworks")
+        st.markdown("### 📊 Key BNS 2023 Sections")
         st.write("""
-        - BNS 2023 (New Penal Code)
+        - **Sec 103**: Murder
+        - **Sec 115(2)**: Voluntarily causing hurt
+        - **Sec 309(2)**: Robbery
+        - **Sec 351**: Criminal intimidation
+        - **Sec 352**: Intentional insult
+        """)
+        st.markdown("### 📚 Other Acts")
+        st.write("""
         - SC/ST Atrocities Act, 1989
         - Arms Act, 1959
         - Motor Vehicles Act, 1988
